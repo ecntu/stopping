@@ -9,14 +9,11 @@ from dataclasses import dataclass
 import simple_parsing
 
 
-def gen_parity_batch(key, bs, seq_len=96, min_nonzero=1, max_nonzero=48):
+def gen_parity_batch(key, bs, seq_len, max_nonzero, min_nonzero=1):
     """Parity examples a la PonderNet.
 
     A random number of positions are set to +/-1 uniformly, with the rest at 0.
     The label is the parity of the count of +1s.
-
-    Training: max_nonzero = seq_len // 2 (e.g. 48 for seq_len=96).
-    Extrapolation eval: set min_nonzero/max_nonzero higher, up to seq_len.
     """
 
     k_count, k_pos, k_sign = jax.random.split(key, 3)
@@ -66,6 +63,18 @@ class Model(nnx.Module):
         hs = rearrange(hs, "t b c -> t b c")
         return ys, hs
 
+    def predict(self, x):
+        # Keep pred with highest certainty across all steps
+        ys, _ = self(x)
+        t, bs, c = ys.shape
+        log_p = jax.nn.log_softmax(ys)
+        per_tick_entropy = reduce(
+            (-jnp.exp(log_p) * log_p), "t b c -> t b", reduction="sum"
+        )
+        per_tick_certainty = 1 - (per_tick_entropy / jnp.log(c))
+        max_cert_ix = per_tick_certainty.argmax(axis=0)
+        return ys[max_cert_ix, jnp.arange(bs)]
+
 
 def loss_fn(model, x, y):
     """Continious Thought Machine style loss"""
@@ -95,8 +104,8 @@ grad_fn = nnx.value_and_grad(loss_fn)
 
 @nnx.jit
 def eval_batch(model, x, y):
-    ys, _ = model(x)
-    return (jnp.argmax(ys[-1], axis=-1) == y).sum()
+    preds = model.predict(x)
+    return (jnp.argmax(preds, axis=-1) == y).sum()
 
 
 def test_acc(key, model, gen_batch_fn, steps):
