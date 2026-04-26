@@ -111,12 +111,14 @@ def test_acc(key, model, gen_batch_fn, steps):
 class Config:
     seq_len: int = 96
     h_dim: int = 128
-    max_steps: int = 48
+    max_steps: int = 20
 
-    batch_size: int = 256
-    lr: float = 1e-3
-    steps: int = 1_000
-    test_steps: int = 128
+    batch_size: int = 128
+    lr: float = 3e-4
+    steps: int = 20_000
+    test_steps: int = 32
+    warmup_steps: int = 500
+    grad_clip: float = 1.0
 
     seed: int = 0
 
@@ -137,7 +139,14 @@ if __name__ == "__main__":
         seq_len=cfg.seq_len, h_dim=cfg.h_dim, max_steps=cfg.max_steps, rngs=rngs
     )
 
-    opt = nnx.Optimizer(model, optax.adam(cfg.lr), wrt=nnx.Param)
+    schedule = optax.warmup_cosine_decay_schedule(
+        init_value=0.0,
+        peak_value=cfg.lr,
+        warmup_steps=cfg.warmup_steps,
+        decay_steps=cfg.steps,
+    )
+    tx = optax.chain(optax.clip_by_global_norm(cfg.grad_clip), optax.adam(schedule))
+    opt = nnx.Optimizer(model, tx, wrt=nnx.Param)
 
     @nnx.jit
     def train_step(model, opt, x, y):
