@@ -76,8 +76,9 @@ def loss_fn(model, x, y):
 
     per_tick_loss = softmax_ce(ys, repeat(y, "b -> t b", t=t))
 
+    log_p = jax.nn.log_softmax(ys)
     per_tick_entropy = reduce(
-        (-jnp.exp(ys) * jax.nn.log_softmax(ys)), "t b c -> t b", reduction="sum"
+        (-jnp.exp(log_p) * log_p), "t b c -> t b", reduction="sum"
     )
     per_tick_certainty = 1 - (per_tick_entropy / jnp.log(c))
 
