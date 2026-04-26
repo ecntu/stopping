@@ -1,0 +1,14 @@
+[project]
+name = "stopping"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "einops>=0.8.2",
+    "flax>=0.12.6",
+    "ipykernel>=7.2.0",
+    "jax>=0.10.0",
+    "numpy>=2.4.4",
+    "simple-parsing>=0.1.8",
+]
