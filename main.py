@@ -119,7 +119,7 @@ def test_acc(key, model, sampler, steps):
 
 @dataclass
 class Config:
-    seq_len: int = 96
+    seq_len: int = 16
     h_dim: int = 128
     max_steps: int = 20
 
