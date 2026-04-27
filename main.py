@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import simple_parsing
 
 
-def gen_parity_batch(key, bs, seq_len, max_nonzero, min_nonzero=1):
+def sample_parity(key, bs, seq_len, max_nonzero, min_nonzero=1):
     """Parity examples a la PonderNet.
 
     A random number of positions are set to +/-1 uniformly, with the rest at 0.
@@ -108,10 +108,10 @@ def eval_batch(model, x, y):
     return (jnp.argmax(preds, axis=-1) == y).sum()
 
 
-def test_acc(key, model, gen_batch_fn, steps):
+def test_acc(key, model, sampler, steps):
     correct, total = 0, 0
     for k in jax.random.split(key, steps):
-        x, y = gen_batch_fn(k)
+        x, y = sampler(k)
         correct += eval_batch(model, x, y)
         total += len(y)
     return correct / total
@@ -138,12 +138,13 @@ if __name__ == "__main__":
     rngs = nnx.Rngs(params=cfg.seed, train=cfg.seed + 1)
     test_key = jax.random.key(cfg.seed)
 
-    gen_batch = partial(gen_parity_batch, bs=cfg.batch_size, seq_len=cfg.seq_len)
-    gen_train_batch = partial(gen_batch, max_nonzero=cfg.seq_len // 2)
-    gen_eval_batch = partial(gen_batch, max_nonzero=cfg.seq_len)
-    test_acc = partial(
-        test_acc, key=test_key, gen_batch_fn=gen_eval_batch, steps=cfg.test_steps
-    )
+    sample = partial(sample_parity, bs=cfg.batch_size, seq_len=cfg.seq_len)
+    sample_train = partial(sample, max_nonzero=cfg.seq_len // 2)
+    sample_eval = partial(sample, max_nonzero=cfg.seq_len)
+
+    _test_acc = partial(test_acc, key=test_key, steps=cfg.test_steps)
+    test_int = partial(_test_acc, sampler=sample_train)
+    test_ext = partial(_test_acc, sampler=sample_eval)
 
     model = Model(
         seq_len=cfg.seq_len, h_dim=cfg.h_dim, max_steps=cfg.max_steps, rngs=rngs
@@ -165,9 +166,13 @@ if __name__ == "__main__":
         return loss
 
     for step in range(cfg.steps):
-        x, y = gen_train_batch(rngs.train())
+        x, y = sample_train(rngs.train())
         loss = train_step(model, opt, x, y)
 
         if step % 25 == 0:
-            acc = test_acc(model=model)
-            print(f"Step {step} - Loss: {loss:.4f} - Eval acc: {acc:.4f}")
+            acc_int = test_int(model=model)
+            acc_ext = test_ext(model=model)
+            print(
+                f"Step {step} - Loss: {loss:.4f} "
+                f"- Int acc: {acc_int:.4f} - Ext acc: {acc_ext:.4f}"
+            )
